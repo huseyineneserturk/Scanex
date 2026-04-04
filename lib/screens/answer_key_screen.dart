@@ -46,7 +46,7 @@ class _AnswerKeyScreenState extends State<AnswerKeyScreen> {
 
     setState(() {
       // Reset all answers
-      _answers = List.filled(AppConstants.maxQuestions, null);
+      _answers = List.filled(_selectedExam?.questionCount ?? AppConstants.maxQuestions, null);
       // Fill with existing data
       for (final entry in existing) {
         if (entry.questionNumber - 1 < _answers.length &&

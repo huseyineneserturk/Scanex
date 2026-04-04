@@ -138,8 +138,6 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-
-
           // Camera preview
           Expanded(
             child: _isInitialized
@@ -237,35 +235,37 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _captureAndProcess() async {
     if (_selectedExam == null || _cameraController == null) return;
 
-
-
     // Capture provider references before async gap
     final examProvider = context.read<ExamProvider>();
 
     setState(() => _isProcessing = true);
 
     try {
-      // Capture image
+      // Step 1: Capture image
       final xFile = await _cameraController!.takePicture();
       final imagePath = xFile.path;
 
-      // Decode image
+      // Step 2: Decode image
       final bytes = await File(imagePath).readAsBytes();
       final image = img.decodeImage(bytes);
       if (image == null) throw Exception('Failed to decode image');
 
-      // Get answer key
+      // Step 3: Get answer key
       final answerKeyEntries =
           await examProvider.getAnswerKey(_selectedExam!.id!);
 
-      // Process image — detect bubbles + student number from OMR grid
+      // Step 4: Process image — detect markers, perspective correct, read bubbles,
+      // crop name and number regions
       final processingResult =
           _imageService.processImage(image, _selectedExam!.questionCount);
 
-      // OCR — extract student name only (number comes from OMR bubbles)
-      final studentInfo = await _ocrService.extractStudentInfo(imagePath);
+      // Step 5: OCR — extract name and number from cropped regions
+      final studentName = await _ocrService.extractName(processingResult.nameImageBytes);
+      final studentNumber = await _ocrService.extractNumber(processingResult.numberImageBytes);
 
-      // Compare with answer key
+      debugPrint('Scanex: OCR Name: "$studentName", Number: "$studentNumber"');
+
+      // Step 6: Compare with answer key
       final studentAnswers = <StudentAnswer>[];
       int correctCount = 0;
 
@@ -291,24 +291,22 @@ class _ScanScreenState extends State<ScanScreen> {
         ));
       }
 
-
       // Warn if markers not found
       if (!processingResult.markersFound && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠ Hizalama işaretleri bulunamadı. Sonuçlar hatalı olabilir.'),
+            content: Text('⚠ Alignment markers not found. Results may be inaccurate.'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 3),
           ),
         );
       }
 
-      // Build result — student number from OMR, name from OCR
-      final decodedNumber = processingResult.studentNumber.replaceAll('_', '');
+      // Step 7: Build result
       final result = ScanResult(
         examId: _selectedExam!.id!,
-        studentName: studentInfo['name'] ?? '',
-        studentNumber: decodedNumber,
+        studentName: studentName,
+        studentNumber: studentNumber,
         totalScore: correctCount,
         totalQuestions: _selectedExam!.questionCount,
         answers: studentAnswers,
@@ -336,8 +334,6 @@ class _ScanScreenState extends State<ScanScreen> {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
-
-
 }
 
 /// Paints guide overlay on camera preview

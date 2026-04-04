@@ -134,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Ücretsiz & Sınırsız',
+                  'Free & Unlimited',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.w600,
@@ -142,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Sınırsız tarama yapabilirsiniz!',
+                  'Unlimited scanning for everyone!',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.textSecondary,
                       ),
@@ -403,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
               value: 'pdf',
               child: ListTile(
                 leading: Icon(Icons.picture_as_pdf_rounded),
-                title: Text('PDF İndir / Görüntüle'),
+                title: Text('Download / View PDF'),
                 dense: true,
               ),
             ),
@@ -520,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 CircularProgressIndicator(color: AppTheme.accent),
                 SizedBox(height: 16),
-                Text('PDF oluşturuluyor...'),
+                Text('Generating PDF...'),
               ],
             ),
           ),
@@ -547,7 +547,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       navigator.pop(); // Close loading dialog
       messenger.showSnackBar(
-        SnackBar(content: Text('PDF oluşturulurken hata: $e')),
+        SnackBar(content: Text('Error generating PDF: $e')),
       );
     }
   }

@@ -5,9 +5,10 @@ import '../core/constants/app_constants.dart';
 
 /// Core optical mark recognition engine.
 /// Processes a captured image to detect 4 corner alignment markers,
-/// perform perspective correction, and read filled bubbles.
+/// perform perspective correction, read filled bubbles,
+/// and crop name/number regions for OCR.
 class ImageProcessingService {
-  /// Process a captured image and return detected answers + student number.
+  /// Process a captured image and return detected answers + cropped regions.
   ProcessingResult processImage(img.Image image, int questionCount) {
     // Step 1: Resize for performance (work at ~1500px width for better accuracy)
     final workImage = _resizeForProcessing(image);
@@ -28,17 +29,69 @@ class ImageProcessingService {
       aligned = gray;
     }
 
-    // Step 5: Read student number from OMR grid
-    final studentNumber = _readStudentNumber(aligned);
+    // Step 5: Crop name and number regions for OCR
+    final nameImage = _cropRegion(
+      aligned,
+      AppConstants.nameCropLeftFrac,
+      AppConstants.nameCropRightFrac,
+      AppConstants.nameCropTopMm,
+      AppConstants.nameCropBottomMm,
+    );
+
+    final numberImage = _cropRegion(
+      aligned,
+      AppConstants.numberCropLeftFrac,
+      AppConstants.numberCropRightFrac,
+      AppConstants.numberCropTopMm,
+      AppConstants.numberCropBottomMm,
+    );
 
     // Step 6: Read answer bubbles
     final answers = _readBubbles(aligned, questionCount);
 
     return ProcessingResult(
       answers: answers,
-      studentNumber: studentNumber,
       markersFound: markers != null,
+      nameImageBytes: nameImage != null ? Uint8List.fromList(img.encodePng(nameImage)) : null,
+      numberImageBytes: numberImage != null ? Uint8List.fromList(img.encodePng(numberImage)) : null,
     );
+  }
+
+  /// Crop a region from the perspective-corrected image.
+  /// Positions are relative to the compact area.
+  img.Image? _cropRegion(
+    img.Image aligned,
+    double leftFrac,
+    double rightFrac,
+    double topMm,
+    double bottomMm,
+  ) {
+    try {
+      final w = aligned.width;
+      final h = aligned.height;
+      final scaleY = h / AppConstants.sheetHeightMm;
+
+      final cropLeft = (w * leftFrac).round().clamp(0, w - 1);
+      final cropRight = (w * rightFrac).round().clamp(cropLeft + 1, w);
+      final cropTop = (topMm * scaleY).round().clamp(0, h - 1);
+      final cropBottom = (bottomMm * scaleY).round().clamp(cropTop + 1, h);
+
+      final cropWidth = cropRight - cropLeft;
+      final cropHeight = cropBottom - cropTop;
+
+      if (cropWidth < 10 || cropHeight < 5) return null;
+
+      return img.copyCrop(
+        aligned,
+        x: cropLeft,
+        y: cropTop,
+        width: cropWidth,
+        height: cropHeight,
+      );
+    } catch (e) {
+      debugPrint('Scanex: Error cropping region: $e');
+      return null;
+    }
   }
 
   /// Resize image to a manageable width while maintaining aspect ratio.
@@ -198,7 +251,7 @@ class ImageProcessingService {
     int imageWidth,
     int imageHeight,
   ) {
-    if (blob.length < 100) return null; // too small
+    if (blob.length < 80) return null; // too small
 
     int minX = imageWidth, maxX = 0, minY = imageHeight, maxY = 0;
     for (final p in blob) {
@@ -222,7 +275,6 @@ class ImageProcessingService {
     if (fillRatio < 0.70) return null;
 
     // Check size: should be reasonable for a marker
-    // Markers are 10mm on 210mm wide sheet, roughly 4.8% of width
     final expectedMinSize = imageWidth * 0.02;
     final expectedMaxSize = imageWidth * 0.10;
     if (w < expectedMinSize || w > expectedMaxSize) return null;
@@ -315,7 +367,7 @@ class ImageProcessingService {
   }
 
   /// Perspective correction using 4 corner markers.
-  /// Maps from marker positions to known sheet coordinates.
+  /// Maps from marker positions to known compact area coordinates.
   img.Image _perspectiveCorrect(
     img.Image gray,
     List<Point<int>> markers,
@@ -327,9 +379,8 @@ class ImageProcessingService {
     final srcBR = markers[3];
 
     // Target dimensions — use high resolution for better accuracy
-    // The target image represents the full A4 sheet
-    // We map marker centers to their known mm positions
-    const targetW = 1050; // ~5 px/mm
+    // The target image represents the compact area only
+    const targetW = 1050; // ~7 px/mm for 150mm width
     final targetH =
         (targetW * AppConstants.sheetHeightMm / AppConstants.sheetWidthMm)
             .round();
@@ -338,14 +389,15 @@ class ImageProcessingService {
     final pxPerMm = targetW / AppConstants.sheetWidthMm;
 
     // The markers' known center positions in the target image
-    final dstTLX = AppConstants.markerTLCenterX * pxPerMm;
-    final dstTLY = AppConstants.markerTLCenterY * pxPerMm;
-    final dstTRX = AppConstants.markerTRCenterX * pxPerMm;
-    final dstTRY = AppConstants.markerTRCenterY * pxPerMm;
-    final dstBLX = AppConstants.markerBLCenterX * pxPerMm;
-    final dstBLY = AppConstants.markerBLCenterY * pxPerMm;
-    final dstBRX = AppConstants.markerBRCenterX * pxPerMm;
-    final dstBRY = AppConstants.markerBRCenterY * pxPerMm;
+    // These are relative to the compact area
+    final dstTLX = (AppConstants.markerTLCenterX - AppConstants.compactLeftMm) * pxPerMm;
+    final dstTLY = (AppConstants.markerTLCenterY - AppConstants.compactTopMm) * pxPerMm;
+    final dstTRX = (AppConstants.markerTRCenterX - AppConstants.compactLeftMm) * pxPerMm;
+    final dstTRY = (AppConstants.markerTRCenterY - AppConstants.compactTopMm) * pxPerMm;
+    final dstBLX = (AppConstants.markerBLCenterX - AppConstants.compactLeftMm) * pxPerMm;
+    final dstBLY = (AppConstants.markerBLCenterY - AppConstants.compactTopMm) * pxPerMm;
+    final dstBRX = (AppConstants.markerBRCenterX - AppConstants.compactLeftMm) * pxPerMm;
+    final dstBRY = (AppConstants.markerBRCenterY - AppConstants.compactTopMm) * pxPerMm;
 
     final result = img.Image(width: targetW, height: targetH);
 
@@ -354,18 +406,15 @@ class ImageProcessingService {
     for (int y = 0; y < targetH; y++) {
       for (int x = 0; x < targetW; x++) {
         // Compute normalized coordinates based on marker positions
-        // Use inverse bilinear mapping
         final u = _inverseBilinearU(
-          x.toDouble(),
-          y.toDouble(),
+          x.toDouble(), y.toDouble(),
           dstTLX, dstTLY,
           dstTRX, dstTRY,
           dstBLX, dstBLY,
           dstBRX, dstBRY,
         );
         final v = _inverseBilinearV(
-          x.toDouble(),
-          y.toDouble(),
+          x.toDouble(), y.toDouble(),
           dstTLX, dstTLY,
           dstTRX, dstTRY,
           dstBLX, dstBLY,
@@ -404,7 +453,6 @@ class ImageProcessingService {
     double blx, double bly,
     double brx, double bry,
   ) {
-    // Compute u using left and right edge interpolation
     final leftEdgeX = tlx + (blx - tlx) * ((py - tly) / (bly - tly)).clamp(0, 1);
     final rightEdgeX = trx + (brx - trx) * ((py - try_) / (bry - try_)).clamp(0, 1);
     return ((px - leftEdgeX) / (rightEdgeX - leftEdgeX)).clamp(0.0, 1.0);
@@ -424,13 +472,13 @@ class ImageProcessingService {
   }
 
   /// Read bubble marks from the aligned image.
-  /// Uses both relative (vs row mean) and absolute thresholds.
+  /// The aligned image represents the compact area only.
   List<String?> _readBubbles(img.Image aligned, int questionCount) {
     final answers = <String?>[];
     final w = aligned.width;
     final h = aligned.height;
 
-    // Convert sheet coordinates (mm) to pixel coordinates
+    // Convert compact area coordinates (mm) to pixel coordinates
     final scaleX = w / AppConstants.sheetWidthMm;
     final scaleY = h / AppConstants.sheetHeightMm;
 
@@ -442,21 +490,20 @@ class ImageProcessingService {
     debugPrint('Scanex: Background intensity: $bgIntensity');
 
     for (int q = 0; q < questionCount; q++) {
-      final bubbleY =
-          ((AppConstants.gridStartYMm + q * AppConstants.bubbleVSpacingMm) *
-                  scaleY)
-              .round();
+      // Positions relative to compact area
+      final questionY = AppConstants.getQuestionY(q, questionCount) - AppConstants.compactTopMm;
+      final bubbleStartX = AppConstants.getBubbleStartX(q, questionCount) - AppConstants.compactLeftMm;
+
+      final bubbleYPx = (questionY * scaleY).round();
 
       final intensities = <double>[];
 
       for (int opt = 0; opt < AppConstants.optionCount; opt++) {
-        final bubbleX =
-            ((AppConstants.gridStartXMm + opt * AppConstants.bubbleHSpacingMm) *
-                    scaleX)
-                .round();
+        final bubbleXMm = bubbleStartX + opt * AppConstants.bubbleHSpacingMm;
+        final bubbleXPx = (bubbleXMm * scaleX).round();
 
         final intensity =
-            _sampleRegionIntensity(aligned, bubbleX, bubbleY, sampleRadius);
+            _sampleRegionIntensity(aligned, bubbleXPx, bubbleYPx, sampleRadius);
         intensities.add(intensity);
       }
 
@@ -483,7 +530,7 @@ class ImageProcessingService {
       // 3. There must be a clear gap between the darkest and second darkest
       final sorted = List<double>.from(intensities)..sort();
       final gap = sorted.length > 1 ? sorted[1] - sorted[0] : 999;
-      final clearGap = gap > 15; // at least 15 intensity units gap
+      final clearGap = gap > 15;
 
       // Accept if at least 2 of 3 conditions are met AND absolute dark
       final conditions = [relativelyDark, absolutelyDark, clearGap];
@@ -503,79 +550,18 @@ class ImageProcessingService {
     return answers;
   }
 
-  /// Read the 9-digit student number from the OMR bubble grid.
-  String _readStudentNumber(img.Image aligned) {
-    final w = aligned.width;
-    final h = aligned.height;
-    final scaleX = w / AppConstants.sheetWidthMm;
-    final scaleY = h / AppConstants.sheetHeightMm;
-    final sampleRadius =
-        max(2, (AppConstants.studentNoBubbleRadiusMm * scaleX * 0.5).round());
-
-    final bgIntensity = _measureBackgroundIntensity(aligned, scaleX, scaleY);
-    final digits = <String>[];
-
-    for (int col = 0; col < AppConstants.studentNoDigits; col++) {
-      final bubbleX = ((AppConstants.studentNoGridStartXMm +
-                  col * AppConstants.studentNoColSpacingMm) *
-              scaleX)
-          .round();
-
-      double minIntensity = 255;
-      int darkestRow = -1;
-      final intensities = <double>[];
-
-      for (int row = 0; row < AppConstants.studentNoRowCount; row++) {
-        final bubbleY = ((AppConstants.studentNoGridStartYMm +
-                    row * AppConstants.studentNoRowSpacingMm) *
-                scaleY)
-            .round();
-
-        final intensity =
-            _sampleRegionIntensity(aligned, bubbleX, bubbleY, sampleRadius);
-        intensities.add(intensity);
-
-        if (intensity < minIntensity) {
-          minIntensity = intensity;
-          darkestRow = row;
-        }
-      }
-
-      final meanIntensity =
-          intensities.reduce((a, b) => a + b) / intensities.length;
-      final relativelyDark = minIntensity < meanIntensity * 0.70;
-      final absolutelyDark = minIntensity < bgIntensity * 0.55;
-
-      final sorted = List<double>.from(intensities)..sort();
-      final gap = sorted.length > 1 ? sorted[1] - sorted[0] : 999;
-      final clearGap = gap > 12;
-
-      final conditions = [relativelyDark, absolutelyDark, clearGap];
-      final conditionsMet = conditions.where((c) => c).length;
-
-      if (darkestRow >= 0 && conditionsMet >= 2 && (absolutelyDark || minIntensity < 120)) {
-        digits.add('$darkestRow');
-      } else {
-        digits.add('_');
-      }
-    }
-
-    return digits.join();
-  }
-
-  /// Measure background intensity by sampling known-empty areas of the sheet
+  /// Measure background intensity by sampling known-empty areas of the compact area
   double _measureBackgroundIntensity(
       img.Image aligned, double scaleX, double scaleY) {
-    // Sample from areas that should definitely be white/empty
-    // Use the area between markers and the grid
     final samples = <double>[];
 
-    // Sample a few points in the header area (should be white paper)
+    // Sample from areas that should definitely be white/empty
+    // These are relative to the compact area
     final samplePoints = [
-      (100.0, 30.0), // middle of sheet, header area
-      (150.0, 30.0),
-      (60.0, 80.0), // between name and number grid
-      (160.0, 80.0),
+      (AppConstants.sheetWidthMm * 0.5, 5.0),   // top center (above markers inner area)
+      (AppConstants.sheetWidthMm * 0.3, 12.0),   // left of name area
+      (AppConstants.sheetWidthMm * 0.7, 12.0),   // right of name area
+      (AppConstants.sheetWidthMm * 0.5, AppConstants.sheetHeightMm - 5.0), // bottom center
     ];
 
     for (final pt in samplePoints) {
@@ -610,7 +596,6 @@ class ImageProcessingService {
       for (int x = max(0, cx - radius);
           x < min(image.width, cx + radius + 1);
           x++) {
-        // Use circular sampling for more accurate results
         final dx = x - cx;
         final dy = y - cy;
         if (dx * dx + dy * dy <= r2) {
@@ -624,16 +609,18 @@ class ImageProcessingService {
   }
 }
 
-/// Result of image processing: detected answers + student number.
+/// Result of image processing: detected answers + cropped name/number images.
 class ProcessingResult {
   final List<String?> answers;
-  final String studentNumber;
   final bool markersFound;
+  final Uint8List? nameImageBytes;
+  final Uint8List? numberImageBytes;
 
   ProcessingResult({
     required this.answers,
-    required this.studentNumber,
     this.markersFound = false,
+    this.nameImageBytes,
+    this.numberImageBytes,
   });
 }
 

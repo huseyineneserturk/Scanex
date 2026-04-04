@@ -56,8 +56,8 @@ class _GenerateSheetScreenState extends State<GenerateSheetScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Create an exam and generate its printable optical answer sheet (A4). '
-                      'The exam name will appear on the sheet.',
+                      'Create an exam and generate its printable optical answer sheet. '
+                      'The compact form uses a ZipGrade-style layout with auto-scaling columns.',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppTheme.textSecondary,
@@ -111,13 +111,24 @@ class _GenerateSheetScreenState extends State<GenerateSheetScreen> {
                   ),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
-                  '${_questionCount.round()}',
-                  style: const TextStyle(
-                    fontSize: 56,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.accent,
-                  ),
+                child: Column(
+                  children: [
+                    Text(
+                      '${_questionCount.round()}',
+                      style: const TextStyle(
+                        fontSize: 56,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                    Text(
+                      '${AppConstants.getColumnCount(_questionCount.round())} column${AppConstants.getColumnCount(_questionCount.round()) > 1 ? 's' : ''}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -158,7 +169,7 @@ class _GenerateSheetScreenState extends State<GenerateSheetScreen> {
             // Quick select chips
             Wrap(
               spacing: 8,
-              children: [10, 15, 20].map((count) {
+              children: [10, 20, 30, 50, 100].map((count) {
                 final selected = _questionCount.round() == count;
                 return ChoiceChip(
                   label: Text('$count'),
@@ -193,9 +204,9 @@ class _GenerateSheetScreenState extends State<GenerateSheetScreen> {
                   const Divider(height: 20, color: AppTheme.surface),
                   _infoRow(Icons.crop_square_rounded, 'Alignment markers', '4 corners'),
                   const Divider(height: 20, color: AppTheme.surface),
-                  _infoRow(Icons.straighten_rounded, 'Paper size', 'A4 (210 × 297 mm)'),
+                  _infoRow(Icons.straighten_rounded, 'Layout', 'Compact (centered on A4)'),
                   const Divider(height: 20, color: AppTheme.surface),
-                  _infoRow(Icons.person_outline, 'Fields', 'Name + Student ID'),
+                  _infoRow(Icons.person_outline, 'Fields', 'Name + Number (handwritten)'),
                 ],
               ),
             ),
