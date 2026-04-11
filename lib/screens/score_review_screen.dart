@@ -182,12 +182,13 @@ class _ScoreReviewScreenState extends State<ScoreReviewScreen> {
                           color: AppTheme.textSecondary,
                         ),
                       ),
-                      Row(
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 4,
                         children: [
                           _legendDot(AppTheme.success, 'Correct'),
-                          const SizedBox(width: 12),
                           _legendDot(AppTheme.error, 'Wrong'),
-                          const SizedBox(width: 12),
+                          _legendDot(Colors.orange, 'Multi'),
                           _legendDot(Colors.grey, 'Empty'),
                         ],
                       ),
@@ -247,10 +248,14 @@ class _ScoreReviewScreenState extends State<ScoreReviewScreen> {
   Widget _buildAnswerRow(answer) {
     final Color statusColor;
     final IconData statusIcon;
+    final bool isMulti = answer.selectedOption == 'MULTI';
 
     if (answer.selectedOption == null) {
       statusColor = Colors.grey;
       statusIcon = Icons.remove_circle_outline;
+    } else if (isMulti) {
+      statusColor = Colors.orange;
+      statusIcon = Icons.warning_amber_rounded;
     } else if (answer.isCorrect) {
       statusColor = AppTheme.success;
       statusIcon = Icons.check_circle_rounded;
@@ -276,7 +281,9 @@ class _ScoreReviewScreenState extends State<ScoreReviewScreen> {
           Icon(statusIcon, size: 18, color: statusColor),
           const SizedBox(width: 8),
           Text(
-            'Answer: ${answer.selectedOption ?? '-'}',
+            isMulti
+                ? 'Multiple Marks'
+                : 'Answer: ${answer.selectedOption ?? '-'}',
             style: TextStyle(
               fontSize: 13,
               color: statusColor,

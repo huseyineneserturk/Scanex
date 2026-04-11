@@ -537,9 +537,29 @@ class ImageProcessingService {
       final conditionsMet = conditions.where((c) => c).length;
 
       if (darkestOption >= 0 && conditionsMet >= 2 && (absolutelyDark || minIntensity < 120)) {
-        answers.add(AppConstants.options[darkestOption]);
-        debugPrint(
-            'Scanex: Q${q + 1} → ${AppConstants.options[darkestOption]} (intensity: ${minIntensity.toStringAsFixed(1)}, mean: ${meanIntensity.toStringAsFixed(1)}, bg: $bgIntensity, gap: ${gap.toStringAsFixed(1)})');
+        // --- Multi-mark detection ---
+        // Count how many bubbles are individually "filled" (dark enough)
+        // A bubble is considered filled if it is dark relative to background
+        // AND dark relative to the row mean
+        int filledCount = 0;
+        final filledThreshold = bgIntensity * 0.60;
+        final filledRelThreshold = meanIntensity * 0.78;
+        for (int i = 0; i < intensities.length; i++) {
+          if (intensities[i] < filledThreshold && intensities[i] < filledRelThreshold) {
+            filledCount++;
+          }
+        }
+
+        if (filledCount > 1) {
+          // Multiple bubbles filled → mark as MULTI (always wrong)
+          answers.add('MULTI');
+          debugPrint(
+              'Scanex: Q${q + 1} → MULTI ($filledCount marks) (intensities: ${intensities.map((e) => e.toStringAsFixed(1)).join(", ")}, bg: $bgIntensity)');
+        } else {
+          answers.add(AppConstants.options[darkestOption]);
+          debugPrint(
+              'Scanex: Q${q + 1} → ${AppConstants.options[darkestOption]} (intensity: ${minIntensity.toStringAsFixed(1)}, mean: ${meanIntensity.toStringAsFixed(1)}, bg: $bgIntensity, gap: ${gap.toStringAsFixed(1)})');
+        }
       } else {
         answers.add(null);
         debugPrint(
