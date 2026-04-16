@@ -277,7 +277,9 @@ class _ScanScreenState extends State<ScanScreen> {
             ? answerKeyEntries[i].correctOption
             : '';
 
+        // "MULTI" means multiple options were filled → always wrong
         final isCorrect = detected != null &&
+            detected != 'MULTI' &&
             correct.isNotEmpty &&
             detected == correct;
 
